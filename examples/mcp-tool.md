@@ -75,7 +75,7 @@ Dependencies: `npm i @modelcontextprotocol/sdk x402-fetch viem zod`
       "args": ["tsx", "/path/to/mcp-server.ts"],
       "env": {
         "TABLEBOOK_URL": "http://localhost:4021",
-        "PRIVATE_KEY": "0x...funded base-sepolia key"
+        "PRIVATE_KEY": "0x...key funded with USDC on the network the server advertises (Base by default)"
       }
     }
   }

@@ -1,7 +1,8 @@
 # API reference
 
 Base URL: your deployment (default `http://localhost:4021`). Machine-readable
-spec: [`openapi.json`](https://github.com/nirholas/x402-tablebook/blob/main/openapi.json).
+spec: `GET /openapi.json` on the running server, also committed as
+[`openapi.json`](https://github.com/nirholas/x402-tablebook/blob/main/openapi.json).
 Paid routes return `402 Payment Required` until called with a valid
 `X-PAYMENT` header; successful paid responses carry an `X-PAYMENT-RESPONSE`
 settlement receipt header.
@@ -139,29 +140,52 @@ plus its full ledger. Errors: `403`, `404`.
 
 | Route | Returns |
 |---|---|
-| `GET /info` | restaurant profile, hours, refund policy, prices, network |
+| `GET /info` | restaurant profile, hours, refund policy, prices, accepted networks |
 | `GET /health` | `{ ok: true, service, restaurant }` |
-| `GET /.well-known/x402` | x402 discovery manifest (resources, prices, schemas) |
+| `GET /openapi.json` | OpenAPI 3.1 contract — paid routes carry `x-payment-info` and a `402` response, free routes declare `"security": []`. Read first by discovery indexers. |
+| `GET /.well-known/x402` | x402 discovery manifest (resources, prices, networks, schemas) |
 
 ---
 
 ## 402 response shape
 
+`accepts[]` carries **one entry per configured network**, so a client pays
+with whichever wallet it already holds:
+
 ```json
 {
   "x402Version": 1,
-  "error": "X-PAYMENT header is required",
   "accepts": [
     {
       "scheme": "exact",
-      "network": "base-sepolia",
+      "network": "base",
       "maxAmountRequired": "10000",
       "resource": "http://localhost:4021/book",
       "description": "Book a table with a refundable hold…",
-      "payTo": "0xMerchant…",
-      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "mimeType": "application/json",
+      "payTo": "0xYourMerchantAddress",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "extra": { "name": "USDC", "version": "2", "decimals": 6 },
+      "maxTimeoutSeconds": 60
+    },
+    {
+      "scheme": "exact",
+      "network": "solana",
+      "maxAmountRequired": "10000",
+      "resource": "http://localhost:4021/book",
+      "description": "Book a table with a refundable hold…",
+      "mimeType": "application/json",
+      "payTo": "YourSolanaAddress",
+      "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "extra": { "name": "USDC", "version": "2", "decimals": 6 },
       "maxTimeoutSeconds": 60
     }
   ]
 }
 ```
+
+`maxAmountRequired` is USDC atomic units — `"1000"` ($0.001) for
+`/availability`, `"10000"` ($0.01) for `/book` — and is identical across
+entries; only the network, `payTo` and `asset` differ. An unpaid probe gets
+no `error` field; it appears only when a supplied `X-PAYMENT` was rejected
+(malformed header, unaccepted network, failed verification or settlement).

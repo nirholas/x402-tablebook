@@ -1,27 +1,36 @@
 # For AI agents
 
 x402-tablebook is built agent-first: no signup, no API key, no OAuth dance.
-If your agent controls a wallet with USDC on Base, it can book a table.
+If your agent controls a wallet holding USDC on **either** Base or Solana, it
+can book a table — every paid route offers both networks at once.
 
 ## Discovery
 
-Two machine-readable entry points, both free:
+Three machine-readable entry points, all free:
 
-1. **`GET /.well-known/x402`** — the x402 manifest: every resource, price,
-   network, asset, and output schema. This is the format indexed by
-   [x402scan.com](https://x402scan.com), the x402 Bazaar, and
-   [agentic.market](https://agentic.market).
-2. **[`skill.md`](https://github.com/nirholas/x402-tablebook/blob/main/skill.md)**
+1. **`GET /openapi.json`** — the canonical OpenAPI 3.1 contract: every route,
+   parameter, response schema, and — on paid routes — an `x-payment-info`
+   block and a documented `402`. This is what
+   [x402scan.com](https://x402scan.com) reads first.
+2. **`GET /.well-known/x402`** — the x402 manifest: every resource, price,
+   accepted network, asset, and output schema. Secondary, but cheap to read;
+   also indexed by the x402 Bazaar and [agentic.market](https://agentic.market).
+3. **[`skill.md`](https://github.com/nirholas/x402-tablebook/blob/main/skill.md)**
    (repo root) — a prose+schema skill file (the agentres.dev pattern) an LLM
    can read directly to learn endpoints, prices, request shapes, and error
    codes.
 
-Recommended agent bootstrap: fetch `/.well-known/x402`, feed `skill.md` into
+Recommended agent bootstrap: fetch `/openapi.json`, feed `skill.md` into
 context, then call endpoints with an x402-capable HTTP client.
 
 ## Paying
 
-Any x402 client works. With `x402-fetch`:
+The `402` body's `accepts[]` lists one entry per network the merchant can
+settle on — same price, different `network`, `payTo` and `asset`. Match it
+against the wallets you hold and sign that entry; you never need a wallet on
+a particular chain.
+
+Any x402 client works. With `x402-fetch` (EVM side):
 
 ```ts
 import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
@@ -45,7 +54,7 @@ spend with the `maxValue` argument.
 | `refundTerms` | when the $0.01 hold is refundable |
 | `ics` | base64 calendar invite — attach to the user's calendar |
 | `signature` | merchant HMAC over the artifact — keep for dispute evidence |
-| `X-PAYMENT-RESPONSE` header | settlement receipt (tx hash) — your proof of payment |
+| `X-PAYMENT-RESPONSE` header | settlement receipt (`transaction`, `network`, `payer`) — your proof of payment |
 
 ## Booking policy for agents
 
@@ -67,13 +76,16 @@ including a `claude_desktop_config.json` snippet.
 
 Running a public instance? Get discovered:
 
-- **x402scan.com** — indexes services exposing `/.well-known/x402`; submit
-  your base URL.
-- **x402 Bazaar** — the facilitator-side discovery list; set
-  `discoverable: true` (already the default here) so your routes are
-  listable by facilitators that support discovery.
+- **x402scan.com** — fetches `GET {origin}/openapi.json` and then probes the
+  paid routes on that **same origin**, ignoring the OpenAPI `servers` field.
+  Submit the URL where the server actually runs; a static site (including
+  this GitHub Pages docs site) can never return a `402` and will not index.
+- **x402 Bazaar** — the facilitator-side discovery list; facilitators that
+  support discovery pick up the routes advertised in your `402` challenges.
 - **agentic.market** — agent-service marketplace; list the base URL and
   point at `skill.md`.
 
-Keep the manifest served over HTTPS at your public origin — indexers and
-agents will refuse plaintext payment endpoints.
+Keep the service over HTTPS at a permanent public origin — indexers and
+agents will refuse plaintext payment endpoints. Behind a proxy that rewrites
+the Host header, set `PUBLIC_URL` so the `resource` field in each `402` and
+the OpenAPI `servers` entry name the real origin.

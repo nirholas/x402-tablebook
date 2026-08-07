@@ -1,6 +1,6 @@
 {
   "name": "x402-tablebook",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open-source Resy: a self-hosted restaurant reservation server that AI agents can book via x402 refundable holds",
   "type": "module",
   "license": "Apache-2.0",
@@ -26,12 +26,12 @@
     "dev": "tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "client": "tsx examples/agent-client.ts"
+    "client": "tsx examples/agent-client.ts",
+    "openapi": "tsx src/generate-openapi.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "express": "^4.21.2",
-    "x402-express": "^1.2.0"
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

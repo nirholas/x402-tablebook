@@ -1,0 +1,14 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "node dist/server.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5
+
+# Mount a volume at /app/data so reservations and the ledger survive redeploys.
+# Set EVM_PAY_TO, SOLANA_PAY_TO, CDP_API_KEY_ID, CDP_API_KEY_SECRET and
+# SIGNING_SECRET as service variables — never commit them.

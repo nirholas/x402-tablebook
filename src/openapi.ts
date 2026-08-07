@@ -1,0 +1,541 @@
+/**
+ * OpenAPI document for x402-tablebook.
+ *
+ * Built to x402scan's discovery spec (https://x402scan.com/discovery/spec):
+ *   - `info.x-guidance` and `info.contact.email` at the top level.
+ *   - Paid operations carry `x-payment-info` + a `402` response, plus an input
+ *     and an output schema. Discovery rejects operations missing either schema.
+ *   - Free operations declare `"security": []` so the scanner skips them
+ *     instead of probing for a 402 that will never come.
+ *   - `x-payment-info.price.amount` is decimal USD; the runtime 402 challenge
+ *     uses USDC atomic units. Both come from PRICES so they cannot drift.
+ *
+ * Discovery resolves endpoints against the *origin* it was given and ignores
+ * `servers`, so this must be served from the same origin as the API itself,
+ * at `GET /openapi.json`.
+ */
+
+import { PRICES } from "./pricing.js";
+import { config } from "./service.js";
+
+const CONTACT_EMAIL = "nichxbt@gmail.com";
+
+const GUIDANCE =
+  "Restaurant reservations for AI agents. Call GET /info (free) for hours, prices and refund policy. " +
+  "Call GET /availability (paid, $0.001) to list open slots — filter with ?date=YYYY-MM-DD&party=N&days=N. " +
+  "Call POST /book (paid, $0.01) with {date, time, party, name} to reserve; the $0.01 is a refundable hold. " +
+  "The booking response returns a cancelToken — store it, it is the only way to look up or cancel the " +
+  "reservation via GET /reservations/{id} and POST /cancel/{id} (both free). " +
+  "Paid routes accept USDC over x402 on either an EVM network or Solana; pick whichever appears in accepts[].";
+
+/** Marks an operation as x402-paid at the given price. */
+function paymentInfo(price: { usd: string }) {
+  return {
+    price: { mode: "fixed", currency: "USD", amount: price.usd },
+    protocols: [{ x402: {} }],
+  };
+}
+
+const jsonBody = (schema: unknown) => ({ "application/json": { schema } });
+
+const errorSchema = {
+  type: "object",
+  properties: {
+    error: { type: "string", description: "Machine-readable error code" },
+    message: { type: "string", description: "Human-readable explanation" },
+  },
+  required: ["error", "message"],
+} as const;
+
+const refundPolicySchema = {
+  type: "object",
+  properties: {
+    holdPrice: { type: "string" },
+    freeCancellationHours: { type: "number" },
+    description: { type: "string" },
+  },
+  required: ["holdPrice", "freeCancellationHours", "description"],
+} as const;
+
+const ledgerEntrySchema = {
+  type: "object",
+  properties: {
+    entryId: { type: "string" },
+    reservationId: { type: "string" },
+    kind: { type: "string", enum: ["hold", "refund", "forfeit"] },
+    amount: { type: "string" },
+    wallet: { type: "string" },
+    reason: { type: "string" },
+    at: { type: "string", format: "date-time" },
+  },
+  required: ["entryId", "reservationId", "kind", "amount", "reason", "at"],
+} as const;
+
+const reservationSchema = {
+  type: "object",
+  properties: {
+    reservationId: { type: "string" },
+    status: { type: "string", enum: ["confirmed", "cancelled"] },
+    date: { type: "string", format: "date" },
+    time: { type: "string", examples: ["19:00"] },
+    party: { type: "integer" },
+    name: { type: "string" },
+    notes: { type: "string" },
+    tableId: { type: "string" },
+    tableName: { type: "string" },
+    tableType: { type: "string" },
+    payerWallet: { type: "string" },
+    createdAt: { type: "string", format: "date-time" },
+    cancelledAt: { type: "string", format: "date-time" },
+  },
+  required: ["reservationId", "status", "date", "time", "party", "name", "createdAt"],
+} as const;
+
+const paymentRequirementsSchema = {
+  type: "object",
+  description: "x402 payment requirements returned with HTTP 402",
+  properties: {
+    x402Version: { type: "integer", examples: [1] },
+    error: { type: "string" },
+    accepts: {
+      type: "array",
+      description: "One entry per accepted network. Sign whichever your wallet supports.",
+      items: {
+        type: "object",
+        properties: {
+          scheme: { type: "string", examples: ["exact"] },
+          network: { type: "string", examples: ["base", "solana"] },
+          maxAmountRequired: {
+            type: "string",
+            description: "Price in USDC atomic units (6 decimals). \"10000\" = $0.01.",
+          },
+          resource: { type: "string", format: "uri" },
+          description: { type: "string" },
+          mimeType: { type: "string" },
+          payTo: { type: "string", description: "Recipient wallet on this network" },
+          asset: { type: "string", description: "USDC contract address or SPL mint" },
+          maxTimeoutSeconds: { type: "integer" },
+          extra: { type: "object" },
+        },
+        required: ["scheme", "network", "maxAmountRequired", "resource", "payTo", "asset"],
+      },
+    },
+  },
+  required: ["x402Version", "accepts"],
+} as const;
+
+const paymentRequiredResponse = {
+  description:
+    "Payment required. Sign one entry from accepts[] and retry with the X-PAYMENT header.",
+  content: jsonBody(paymentRequirementsSchema),
+} as const;
+
+const xPaymentParameter = {
+  name: "X-PAYMENT",
+  in: "header",
+  required: false,
+  description:
+    "Base64-encoded signed x402 payment payload. Omit to receive a 402 with PaymentRequirements.",
+  schema: { type: "string" },
+} as const;
+
+const xPaymentResponseHeader = {
+  description: "Base64-encoded settlement receipt (transaction hash, network, payer)",
+  schema: { type: "string" },
+} as const;
+
+export function buildOpenApiDocument(origin: string): Record<string, unknown> {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "x402-tablebook",
+      version: "0.2.0",
+      description:
+        `Restaurant reservations for AI agents, at ${config.restaurant.name}. ` +
+        "Availability and booking are paid per call over x402 in USDC; the booking fee is a " +
+        "refundable hold. Lookup and cancellation are free and authenticated by the cancelToken " +
+        "returned at booking time.",
+      "x-guidance": GUIDANCE,
+      contact: { name: "nirholas", email: CONTACT_EMAIL, url: "https://github.com/nirholas/x402-tablebook" },
+      license: { name: "Apache-2.0", identifier: "Apache-2.0" },
+    },
+    servers: [{ url: origin, description: "This deployment" }],
+    paths: {
+      "/availability": {
+        get: {
+          operationId: "getAvailability",
+          summary: `Open reservation slots (${PRICES.availability.label} via x402)`,
+          description:
+            "Lists bookable slots across the booking window: date, time, seatable party sizes, " +
+            "table types and open table count. All filters are optional; with none supplied the " +
+            "whole window is returned.",
+          tags: ["Reservations"],
+          "x-payment-info": paymentInfo(PRICES.availability),
+          parameters: [
+            {
+              name: "date",
+              in: "query",
+              required: false,
+              description: "Restrict to a single date (YYYY-MM-DD).",
+              schema: { type: "string", format: "date" },
+            },
+            {
+              name: "party",
+              in: "query",
+              required: false,
+              description: "Only slots that can seat this many guests.",
+              schema: { type: "integer", minimum: 1 },
+            },
+            {
+              name: "days",
+              in: "query",
+              required: false,
+              description: "How many days ahead to search, from today.",
+              schema: { type: "integer", minimum: 1 },
+            },
+            xPaymentParameter,
+          ],
+          responses: {
+            "200": {
+              description: "Availability for the requested window",
+              headers: { "X-PAYMENT-RESPONSE": xPaymentResponseHeader },
+              content: jsonBody({
+                type: "object",
+                properties: {
+                  restaurant: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      timezone: { type: "string" },
+                      address: { type: "string" },
+                      phone: { type: "string" },
+                    },
+                    required: ["name", "timezone"],
+                  },
+                  slotMinutes: { type: "integer" },
+                  seatingMinutes: { type: "integer" },
+                  refundPolicy: refundPolicySchema,
+                  generatedAt: { type: "string", format: "date-time" },
+                  slots: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        date: { type: "string", format: "date" },
+                        time: { type: "string", examples: ["19:00"] },
+                        partySizes: { type: "array", items: { type: "integer" } },
+                        tableTypes: { type: "array", items: { type: "string" } },
+                        openTables: { type: "integer" },
+                      },
+                      required: ["date", "time", "partySizes", "tableTypes", "openTables"],
+                    },
+                  },
+                },
+                required: ["restaurant", "slots", "generatedAt"],
+              }),
+            },
+            "402": paymentRequiredResponse,
+          },
+        },
+      },
+
+      "/book": {
+        post: {
+          operationId: "bookTable",
+          summary: `Book a table with a refundable hold (${PRICES.book.label} via x402)`,
+          description:
+            "Reserves a table. The fee is a hold, fully refunded on cancellation inside the free " +
+            "window. The response carries the cancelToken — the only credential for looking up or " +
+            "cancelling the reservation — plus a base64 ICS calendar invite and a signed ledger entry.",
+          tags: ["Reservations"],
+          "x-payment-info": paymentInfo(PRICES.book),
+          parameters: [xPaymentParameter],
+          requestBody: {
+            required: true,
+            content: jsonBody({
+              type: "object",
+              properties: {
+                date: { type: "string", format: "date", description: "YYYY-MM-DD" },
+                time: { type: "string", examples: ["19:00"], description: "HH:MM, 24-hour" },
+                party: { type: "integer", minimum: 1, description: "Number of guests" },
+                name: { type: "string", minLength: 1, description: "Name to hold the table under" },
+                notes: { type: "string", description: "Allergies, occasion, seating preference" },
+                payerWallet: {
+                  type: "string",
+                  description: "Refund destination. Defaults to the wallet that paid.",
+                },
+              },
+              required: ["date", "time", "party", "name"],
+            }),
+          },
+          responses: {
+            "200": {
+              description: "Reservation confirmed",
+              headers: { "X-PAYMENT-RESPONSE": xPaymentResponseHeader },
+              content: jsonBody({
+                type: "object",
+                properties: {
+                  reservationId: { type: "string" },
+                  status: { type: "string", enum: ["confirmed"] },
+                  restaurant: { type: "string" },
+                  confirmedTime: { type: "string", description: "Human-readable date and time" },
+                  party: { type: "integer" },
+                  name: { type: "string" },
+                  table: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      type: { type: "string" },
+                      seats: { type: "integer" },
+                    },
+                    required: ["id", "name", "type", "seats"],
+                  },
+                  refundTerms: refundPolicySchema,
+                  cancelToken: {
+                    type: "string",
+                    description: "Store this — required to look up or cancel the reservation.",
+                  },
+                  cancelEndpoint: { type: "string" },
+                  ledgerEntry: ledgerEntrySchema,
+                  ics: { type: "string", description: "base64-encoded RFC 5545 calendar invite" },
+                  signature: { type: "string", description: "HMAC-SHA256 over canonical JSON" },
+                  createdAt: { type: "string", format: "date-time" },
+                },
+                required: [
+                  "reservationId",
+                  "status",
+                  "confirmedTime",
+                  "party",
+                  "name",
+                  "table",
+                  "cancelToken",
+                  "createdAt",
+                ],
+              }),
+            },
+            "400": { description: "Invalid input", content: jsonBody(errorSchema) },
+            "402": paymentRequiredResponse,
+            "409": {
+              description: "Slot unavailable or outside opening hours",
+              content: jsonBody(errorSchema),
+            },
+          },
+        },
+      },
+
+      "/cancel/{id}": {
+        post: {
+          operationId: "cancelReservation",
+          summary: "Cancel a reservation (free, authenticated by cancelToken)",
+          description:
+            "Cancels a reservation and refunds the hold when inside the free-cancellation window. " +
+            "Later cancellations forfeit it. Either outcome is recorded in the ledger.",
+          tags: ["Reservations"],
+          security: [],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              description: "reservationId from the booking response",
+              schema: { type: "string" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: jsonBody({
+              type: "object",
+              properties: {
+                cancelToken: { type: "string", description: "From the booking response" },
+              },
+              required: ["cancelToken"],
+            }),
+          },
+          responses: {
+            "200": {
+              description: "Cancellation record and refund ledger entry",
+              content: jsonBody({
+                type: "object",
+                properties: {
+                  reservationId: { type: "string" },
+                  status: { type: "string", enum: ["cancelled"] },
+                  cancelledAt: { type: "string", format: "date-time" },
+                  refunded: { type: "boolean" },
+                  refundLedgerEntry: ledgerEntrySchema,
+                  ledger: { type: "array", items: ledgerEntrySchema },
+                  signature: { type: "string" },
+                },
+                required: ["reservationId", "status", "cancelledAt", "refunded"],
+              }),
+            },
+            "403": { description: "Bad cancelToken", content: jsonBody(errorSchema) },
+            "404": { description: "Unknown reservation", content: jsonBody(errorSchema) },
+            "409": { description: "Already cancelled", content: jsonBody(errorSchema) },
+          },
+        },
+      },
+
+      "/reservations/{id}": {
+        get: {
+          operationId: "getReservation",
+          summary: "Look up a reservation (free, authenticated by cancelToken)",
+          tags: ["Reservations"],
+          security: [],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              description: "reservationId from the booking response",
+              schema: { type: "string" },
+            },
+            {
+              name: "cancelToken",
+              in: "query",
+              required: true,
+              description: "From the booking response",
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "The reservation, with its ledger appended",
+              content: jsonBody({
+                ...reservationSchema,
+                properties: {
+                  ...reservationSchema.properties,
+                  ledger: { type: "array", items: ledgerEntrySchema },
+                },
+                required: [...reservationSchema.required, "ledger"],
+              }),
+            },
+            "403": { description: "Bad cancelToken", content: jsonBody(errorSchema) },
+            "404": { description: "Unknown reservation", content: jsonBody(errorSchema) },
+          },
+        },
+      },
+
+      "/info": {
+        get: {
+          operationId: "getInfo",
+          summary: "Restaurant profile, hours, refund policy and prices (free)",
+          tags: ["Discovery"],
+          security: [],
+          responses: {
+            "200": {
+              description: "Restaurant profile",
+              content: jsonBody({
+                type: "object",
+                properties: {
+                  restaurant: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      timezone: { type: "string" },
+                      address: { type: "string" },
+                      phone: { type: "string" },
+                    },
+                    required: ["name", "timezone"],
+                  },
+                  hours: {
+                    type: "object",
+                    description: "Opening hours per weekday; null means closed.",
+                    additionalProperties: {
+                      type: ["object", "null"],
+                      properties: {
+                        open: { type: "string", examples: ["17:00"] },
+                        close: { type: "string", examples: ["22:00"] },
+                      },
+                    },
+                  },
+                  refundPolicy: refundPolicySchema,
+                  prices: {
+                    type: "object",
+                    properties: {
+                      availability: { type: "string" },
+                      book: { type: "string" },
+                    },
+                    required: ["availability", "book"],
+                  },
+                  networks: {
+                    type: "array",
+                    description: "x402 networks this deployment accepts payment on",
+                    items: { type: "string" },
+                  },
+                },
+                required: ["restaurant", "hours", "refundPolicy", "prices", "networks"],
+              }),
+            },
+          },
+        },
+      },
+
+      "/health": {
+        get: {
+          operationId: "getHealth",
+          summary: "Liveness check (free)",
+          tags: ["Discovery"],
+          security: [],
+          responses: {
+            "200": {
+              description: "Service is up",
+              content: jsonBody({
+                type: "object",
+                properties: {
+                  ok: { type: "boolean" },
+                  service: { type: "string" },
+                  restaurant: { type: "string" },
+                },
+                required: ["ok", "service"],
+              }),
+            },
+          },
+        },
+      },
+
+      "/openapi.json": {
+        get: {
+          operationId: "getOpenApiDocument",
+          summary: "This OpenAPI document (free)",
+          tags: ["Discovery"],
+          security: [],
+          responses: {
+            "200": {
+              description: "OpenAPI 3.1 document",
+              content: jsonBody({ type: "object" }),
+            },
+          },
+        },
+      },
+
+      "/.well-known/x402": {
+        get: {
+          operationId: "getX402Manifest",
+          summary: "x402 discovery manifest (free)",
+          tags: ["Discovery"],
+          security: [],
+          responses: {
+            "200": {
+              description: "Manifest of paid and free resources",
+              content: jsonBody({
+                type: "object",
+                properties: {
+                  x402Version: { type: "integer" },
+                  name: { type: "string" },
+                  description: { type: "string" },
+                  networks: { type: "array", items: { type: "string" } },
+                  resources: { type: "array", items: { type: "object" } },
+                  freeResources: { type: "array", items: { type: "object" } },
+                },
+                required: ["x402Version", "name", "resources"],
+              }),
+            },
+          },
+        },
+      },
+    },
+  };
+}

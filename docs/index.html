@@ -60,16 +60,18 @@
     <a href="api.md">API reference</a>
     <a href="agents.md">For agents</a>
     <a href="https://github.com/nirholas/x402-tablebook/blob/main/skill.md">skill.md</a>
-    <a href="https://github.com/nirholas/x402-tablebook/blob/main/public/.well-known/x402">.well-known/x402</a>
+    <a href="https://github.com/nirholas/x402-tablebook/blob/main/openapi.json">openapi.json</a>
+    <a href="https://github.com/nirholas/x402-tablebook/blob/main/src/well-known.ts">.well-known/x402</a>
   </nav>
 
   <div class="hero">
-    <span class="pill">x402 Suite · flagship · USDC on Base</span>
+    <span class="pill">x402 Suite · flagship · USDC on Base + Solana</span>
     <h1>Open-source Resy that <span class="a">AI&nbsp;agents can book</span>.</h1>
     <p class="sub">A self-hosted restaurant reservation server with x402 micropayments: $0.001 to see real availability, a $0.01 <em>refundable hold</em> to claim the table. Confirmation, cancel token, refund terms, and a calendar invite come back in the same HTTP response.</p>
     <div class="install">git clone https://github.com/nirholas/x402-tablebook
 cd x402-tablebook &amp;&amp; npm install
-PAY_TO_ADDRESS=0xYourAddress npm run dev</div>
+EVM_PAY_TO=0xYourAddress npm run dev</div>
+    <p style="color:var(--muted);font-size:.9rem;margin-top:12px">Add <code>SOLANA_PAY_TO</code> (plus CDP credentials) and the same routes take Solana USDC too — both networks are offered side by side in every <code>402</code>, and the agent pays with whichever wallet it holds.</p>
     <div class="ctas">
       <a class="btn primary" href="https://github.com/nirholas/x402-tablebook">View on GitHub</a>
       <a class="btn ghost" href="tutorial.md">Read the tutorial</a>
@@ -82,14 +84,16 @@ PAY_TO_ADDRESS=0xYourAddress npm run dev</div>
     <tr><td><code>GET /availability</code></td><td class="price-tag">$0.001</td><td>Open slots — date, time, seatable party sizes, table types, open-table counts</td></tr>
     <tr><td><code>POST /book</code></td><td class="price-tag">$0.01 <span style="font-weight:400;color:var(--muted)">(refundable)</span></td><td>Confirmed reservation: table, refund terms, <code>cancelToken</code>, ledger entry, base64 <code>.ics</code> invite, HMAC signature</td></tr>
     <tr><td><code>POST /cancel/:id</code></td><td class="price-tag">free</td><td>Cancellation record + refund ledger entry (auth by <code>cancelToken</code>)</td></tr>
-    <tr><td><code>GET /info</code> · <code>/.well-known/x402</code></td><td class="price-tag">free</td><td>Profile, hours, machine-readable payment manifest</td></tr>
+    <tr><td><code>GET /reservations/:id</code></td><td class="price-tag">free</td><td>Reservation + full ledger (auth by <code>cancelToken</code>)</td></tr>
+    <tr><td><code>GET /info</code> · <code>/health</code></td><td class="price-tag">free</td><td>Profile, hours, prices and accepted networks · liveness</td></tr>
+    <tr><td><code>GET /openapi.json</code> · <code>/.well-known/x402</code></td><td class="price-tag">free</td><td>OpenAPI 3.1 contract and payment manifest — what discovery indexers read</td></tr>
   </table>
 
   <h2>How a paid call works</h2>
   <div class="flow">
-    <div class="step"><b>1 · Request</b><p><code>POST /book</code> with no payment. Server replies <strong>402</strong> with exact payment requirements (amount, USDC contract, recipient).</p></div>
+    <div class="step"><b>1 · Request</b><p><code>POST /book</code> with no payment. Server replies <strong>402</strong> with exact payment requirements — one <code>accepts[]</code> entry per network (amount, USDC contract or mint, recipient).</p></div>
     <div class="arrow">→</div>
-    <div class="step"><b>2 · Pay</b><p>Client signs an EIP-3009 USDC authorization and retries with the <code>X-PAYMENT</code> header. Facilitator verifies &amp; settles on Base.</p></div>
+    <div class="step"><b>2 · Pay</b><p>Client picks the entry matching a wallet it holds, signs it — EIP-3009 on EVM, an SPL transfer on Solana — and retries with the <code>X-PAYMENT</code> header. That network's facilitator verifies &amp; settles.</p></div>
     <div class="arrow">→</div>
     <div class="step"><b>3 · Artifact</b><p><strong>200</strong> with the reservation in the body and a settlement receipt in <code>X-PAYMENT-RESPONSE</code>. Done in seconds.</p></div>
   </div>
@@ -114,7 +118,7 @@ console.log(booking.reservationId, booking.cancelToken, booking.ics);</pre>
   <h2>Explore</h2>
   <div class="grid">
     <div class="tile"><h3>Human checkout demo</h3><p>Resy-style flow with the drop-in payment modal — search, tap a slot, pay, download the invite.</p><a href="https://github.com/nirholas/x402-tablebook/blob/main/public/index.html">public/index.html →</a></div>
-    <div class="tile"><h3>For AI agents</h3><p>skill.md + .well-known/x402 discovery, MCP tool wrapper for Claude, listing on x402scan / Bazaar.</p><a href="agents.md">agents.md →</a></div>
+    <div class="tile"><h3>For AI agents</h3><p>skill.md + /openapi.json discovery, multi-network payment, MCP tool wrapper for Claude, listing on x402scan / Bazaar.</p><a href="agents.md">agents.md →</a></div>
     <div class="tile"><h3>API reference</h3><p>Every endpoint with params, prices, schemas, and error cases. OpenAPI 3.1 included.</p><a href="api.md">api.md →</a></div>
     <div class="tile"><h3>Raw wire flow</h3><p>The exact 402 → pay → 200 exchange in curl, header by header.</p><a href="https://github.com/nirholas/x402-tablebook/blob/main/examples/curl.md">examples/curl.md →</a></div>
   </div>

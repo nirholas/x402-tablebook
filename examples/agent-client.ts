@@ -9,7 +9,9 @@
  * Usage:
  *   PRIVATE_KEY=0x... BASE_URL=http://localhost:4021 npx tsx examples/agent-client.ts
  *
- * The wallet needs base-sepolia USDC — faucet: https://faucet.circle.com
+ * The wallet needs USDC on the EVM network the server advertises in `accepts[]`
+ * — `base` by default. Run the server with X402_EVM_NETWORK=base-sepolia to test
+ * for free and fund from the faucet: https://faucet.circle.com
  */
 import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
 import { privateKeyToAccount } from "viem/accounts";
@@ -17,7 +19,10 @@ import { privateKeyToAccount } from "viem/accounts";
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4021";
 const pk = process.env.PRIVATE_KEY;
 if (!pk) {
-  console.error("Set PRIVATE_KEY to a funded base-sepolia key (https://faucet.circle.com)");
+  console.error(
+    "Set PRIVATE_KEY to an EVM key funded with USDC on the network the server advertises " +
+      "(base by default; base-sepolia faucet: https://faucet.circle.com)",
+  );
   process.exit(1);
 }
 

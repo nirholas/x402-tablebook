@@ -4,7 +4,7 @@ Self-hosted restaurant reservation server payable with x402 micropayments (USDC)
 
 **Base URL**: `https://YOUR-DEPLOYMENT.example.com` (self-hosted — each restaurant runs its own instance)
 
-**Machine-readable manifest**: `GET /.well-known/x402` (free)
+**Machine-readable contract**: `GET /openapi.json` (free, OpenAPI 3.1) — read this first. Secondary manifest: `GET /.well-known/x402` (free).
 
 ## Endpoints
 
@@ -83,15 +83,16 @@ Response: cancellation record + refund ledger entry, signed:
 - `GET /info` — restaurant profile, hours, refund policy, prices
 - `GET /reservations/:id?cancelToken=...` — reservation + ledger
 - `GET /health` — liveness
+- `GET /openapi.json` — this service's OpenAPI 3.1 contract (paid routes carry `x-payment-info`)
 - `GET /.well-known/x402` — this service's payment manifest
 
 ## Payment
 
 - Protocol: [x402](https://x402.org) (HTTP 402 Payment Required)
-- Network: `base-sepolia` by default (`NETWORK=base` for mainnet)
-- Asset: USDC
-- Facilitator: `https://x402.org/facilitator` (configurable via `FACILITATOR_URL`)
-- Pay via `x402-fetch`, or any x402-compatible client: call the route, receive `402` with `PaymentRequirements`, sign the USDC payment, retry with the `X-PAYMENT` header, receive `200` + artifact + `X-PAYMENT-RESPONSE` settlement receipt.
+- Networks: **every configured network is advertised at once** — the `402` body carries one `accepts[]` entry per network. Pick whichever matches a wallet you already hold. Defaults: `base` (EVM, `X402_EVM_NETWORK`) and `solana` (`X402_SOLANA_NETWORK`). A network only appears once the merchant has both a recipient wallet and a facilitator that can settle it, so anything in `accepts[]` is payable.
+- Asset: USDC — `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` on Base, mint `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` on Solana
+- Facilitators: Sperax for EVM (`X402_FACILITATOR_EVM`, default `https://x402.sperax.io`), Coinbase CDP for Solana (`X402_FACILITATOR_SOLANA`)
+- Pay via `x402-fetch`, or any x402-compatible client: call the route, receive `402` with `PaymentRequirements`, sign the USDC payment for your chosen `accepts[]` entry (EIP-3009 authorization on EVM, SPL transfer on Solana), retry with the `X-PAYMENT` header, receive `200` + artifact + `X-PAYMENT-RESPONSE` settlement receipt.
 
 ## Verifying signatures
 
