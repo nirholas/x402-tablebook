@@ -13,8 +13,11 @@
     "x402",
     "micropayments",
     "usdc",
+    "solana",
+    "base",
     "ai-agents",
     "agentic-commerce",
+    "http-402",
     "reservations",
     "restaurant",
     "booking",
@@ -29,8 +32,12 @@
     "client": "tsx examples/agent-client.ts"
   },
   "dependencies": {
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.98.4",
+    "@three-ws/x402-payment-modal": "^1.2.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "x402": "^1.2.0",
     "x402-express": "^1.2.0"
   },
   "devDependencies": {
@@ -43,5 +50,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "author": "nirholas <nichxbt@gmail.com>",
+  "bugs": {
+    "url": "https://github.com/nirholas/x402-tablebook/issues"
   }
 }

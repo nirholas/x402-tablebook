@@ -87,12 +87,50 @@ Response: cancellation record + refund ledger entry, signed:
 
 ## Payment
 
-- Protocol: [x402](https://x402.org) (HTTP 402 Payment Required)
-- Network: `base-sepolia` by default (`NETWORK=base` for mainnet)
-- Asset: USDC
-- Facilitator: `https://x402.org/facilitator` (configurable via `FACILITATOR_URL`)
-- Pay via `x402-fetch`, or any x402-compatible client: call the route, receive `402` with `PaymentRequirements`, sign the USDC payment, retry with the `X-PAYMENT` header, receive `200` + artifact + `X-PAYMENT-RESPONSE` settlement receipt.
+**Pay in USDC on Base or Solana — your client picks the rail.** Every paid route
+answers an unpaid request with a `402` whose `accepts` array carries both rails;
+choose the one your wallet can settle and ignore the other.
+
+- Protocol: [x402](https://x402.org) (HTTP 402 Payment Required), `x402Version: 1`, scheme `exact`
+- **EVM rail** — network `base-sepolia` (default; `NETWORK=base` for mainnet), asset USDC
+  (`0x036CbD53842c5426634e7929541eC2318f3dCF7e` on base-sepolia), payTo
+  `0x40252CFDF8B20Ed757D61ff157719F33Ec332402`
+- **Solana rail** — network `solana` (`SOLANA_NETWORK=devnet` for `solana-devnet`), asset USDC
+  (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`), payTo
+  `WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW`
+- Facilitator: `https://x402.org/facilitator` (configurable via `FACILITATOR_URL`) — verifies and settles both rails
+- Flow: call the route → receive `402` + `accepts[]` → sign the USDC payment for one rail
+  (EVM: EIP-3009 `transferWithAuthorization`; Solana: SPL `transferChecked`) → retry with the
+  `X-PAYMENT` header → receive `200` + the artifact in the body + an
+  `X-PAYMENT-RESPONSE` settlement receipt naming the rail and transaction.
+- Clients: `x402-fetch` (EVM), `@three-ws/x402-payment-modal` (browser, both rails),
+  or any x402-compatible client.
+- Settlement happens only when the route returns `2xx`. A rejected booking never charges you.
+
+Example 402 body:
+
+```json
+{
+  "x402Version": 1,
+  "error": "X-PAYMENT header is required",
+  "accepts": [
+    { "scheme": "exact", "network": "base-sepolia", "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402", "maxAmountRequired": "10000",
+      "resource": "https://YOUR-DEPLOYMENT.example.com/book", "mimeType": "application/json",
+      "maxTimeoutSeconds": 300, "description": "Book a table with a refundable hold..." },
+    { "scheme": "exact", "network": "solana", "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW", "maxAmountRequired": "10000",
+      "resource": "https://YOUR-DEPLOYMENT.example.com/book", "mimeType": "application/json",
+      "maxTimeoutSeconds": 300, "description": "Book a table with a refundable hold..." }
+  ]
+}
+```
 
 ## Verifying signatures
 
 `signature` fields are HMAC-SHA256 (hex) over the canonical JSON (sorted keys, `signature` field excluded) using the server's `SIGNING_SECRET`. Verify with the exported `verify()` in `src/sign.ts` if you share the secret, or treat the signature as a tamper-evidence tag issued by the merchant.
+
+## Contact
+
+Questions, integration help, or a bug: **nichxbt@gmail.com** ·
+[github.com/nirholas/x402-tablebook](https://github.com/nirholas/x402-tablebook)

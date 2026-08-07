@@ -12,26 +12,76 @@
       "outputSchema": {
         "type": "object",
         "properties": {
-          "restaurant": { "type": "object" },
-          "slotMinutes": { "type": "number" },
-          "seatingMinutes": { "type": "number" },
-          "refundPolicy": { "type": "object" },
-          "generatedAt": { "type": "string" },
+          "restaurant": {
+            "type": "object"
+          },
+          "slotMinutes": {
+            "type": "number"
+          },
+          "seatingMinutes": {
+            "type": "number"
+          },
+          "refundPolicy": {
+            "type": "object"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
           "slots": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "date": { "type": "string" },
-                "time": { "type": "string" },
-                "partySizes": { "type": "array", "items": { "type": "number" } },
-                "tableTypes": { "type": "array", "items": { "type": "string" } },
-                "openTables": { "type": "number" }
+                "date": {
+                  "type": "string"
+                },
+                "time": {
+                  "type": "string"
+                },
+                "partySizes": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "tableTypes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "openTables": {
+                  "type": "number"
+                }
               }
             }
           }
         }
-      }
+      },
+      "networks": [
+        "base-sepolia",
+        "solana"
+      ],
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "base-sepolia",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "assetSymbol": "USDC",
+          "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402",
+          "maxAmountRequired": "1000",
+          "mimeType": "application/json"
+        },
+        {
+          "scheme": "exact",
+          "network": "solana",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "assetSymbol": "USDC",
+          "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW",
+          "maxAmountRequired": "1000",
+          "mimeType": "application/json"
+        }
+      ]
     },
     {
       "resource": "POST /book",
@@ -42,27 +92,115 @@
       "outputSchema": {
         "type": "object",
         "properties": {
-          "reservationId": { "type": "string" },
-          "status": { "type": "string", "enum": ["confirmed"] },
-          "restaurant": { "type": "string" },
-          "confirmedTime": { "type": "string" },
-          "party": { "type": "number" },
-          "name": { "type": "string" },
-          "table": { "type": "object" },
-          "refundTerms": { "type": "object" },
-          "cancelToken": { "type": "string" },
-          "cancelEndpoint": { "type": "string" },
-          "ledgerEntry": { "type": "object" },
-          "ics": { "type": "string", "description": "base64-encoded RFC 5545 calendar invite" },
-          "signature": { "type": "string", "description": "HMAC-SHA256 over canonical JSON" }
+          "reservationId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed"
+            ]
+          },
+          "restaurant": {
+            "type": "string"
+          },
+          "confirmedTime": {
+            "type": "string"
+          },
+          "party": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "table": {
+            "type": "object"
+          },
+          "refundTerms": {
+            "type": "object"
+          },
+          "cancelToken": {
+            "type": "string"
+          },
+          "cancelEndpoint": {
+            "type": "string"
+          },
+          "ledgerEntry": {
+            "type": "object"
+          },
+          "ics": {
+            "type": "string",
+            "description": "base64-encoded RFC 5545 calendar invite"
+          },
+          "signature": {
+            "type": "string",
+            "description": "HMAC-SHA256 over canonical JSON"
+          }
         }
-      }
+      },
+      "networks": [
+        "base-sepolia",
+        "solana"
+      ],
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "base-sepolia",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "assetSymbol": "USDC",
+          "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402",
+          "maxAmountRequired": "10000",
+          "mimeType": "application/json"
+        },
+        {
+          "scheme": "exact",
+          "network": "solana",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "assetSymbol": "USDC",
+          "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW",
+          "maxAmountRequired": "10000",
+          "mimeType": "application/json"
+        }
+      ]
     }
   ],
   "freeResources": [
-    { "resource": "GET /info", "description": "Restaurant profile, hours, refund policy, prices" },
-    { "resource": "POST /cancel/:id", "description": "Cancel a reservation (auth: cancelToken from /book). Returns cancellation record + refund ledger entry." },
-    { "resource": "GET /reservations/:id", "description": "Look up a reservation (auth: cancelToken)" },
-    { "resource": "GET /health", "description": "Liveness check" }
-  ]
+    {
+      "resource": "GET /info",
+      "description": "Restaurant profile, hours, refund policy, prices"
+    },
+    {
+      "resource": "POST /cancel/:id",
+      "description": "Cancel a reservation (auth: cancelToken from /book). Returns cancellation record + refund ledger entry."
+    },
+    {
+      "resource": "GET /reservations/:id",
+      "description": "Look up a reservation (auth: cancelToken)"
+    },
+    {
+      "resource": "GET /health",
+      "description": "Liveness check"
+    }
+  ],
+  "payment": {
+    "protocol": "x402",
+    "summary": "Pay in USDC on Base or Solana — your client picks the rail.",
+    "rails": [
+      {
+        "rail": "evm",
+        "network": "base-sepolia",
+        "mainnet": "base",
+        "asset": "USDC",
+        "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402"
+      },
+      {
+        "rail": "solana",
+        "network": "solana",
+        "devnet": "solana-devnet",
+        "asset": "USDC",
+        "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW"
+      }
+    ],
+    "facilitator": "https://x402.org/facilitator"
+  }
 }

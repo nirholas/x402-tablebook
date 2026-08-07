@@ -1,7 +1,7 @@
 # Raw HTTP walkthrough: 402 → pay → 200
 
 x402 is plain HTTP. Here is the exact wire flow with `curl` against a local
-server (`PAY_TO_ADDRESS=0x... npm run dev`).
+server (`npm run dev` — it ships with working default receive addresses).
 
 ## 1. Free routes need no payment
 
@@ -27,25 +27,49 @@ Content-Type: application/json
     {
       "scheme": "exact",
       "network": "base-sepolia",
-      "maxAmountRequired": "1000",            // 0.001 USDC in atomic units
+      "maxAmountRequired": "1000",
       "resource": "http://localhost:4021/availability",
       "description": "Open reservation slots ...",
-      "payTo": "0xYourMerchantAddress",
-      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",  // USDC on base-sepolia
-      "maxTimeoutSeconds": 60
+      "mimeType": "application/json",
+      "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402",
+      "maxTimeoutSeconds": 300,
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "extra": { "name": "USDC", "version": "2" }
+    },
+    {
+      "scheme": "exact",
+      "network": "solana",
+      "maxAmountRequired": "1000",
+      "resource": "http://localhost:4021/availability",
+      "description": "Open reservation slots ...",
+      "mimeType": "application/json",
+      "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW",
+      "maxTimeoutSeconds": 300,
+      "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "extra": { "rpcUrl": "https://api.mainnet-beta.solana.com" }
     }
   ]
 }
 ```
+
+Two entries, two rails: **USDC on Base** and **USDC on Solana**. `1000` is
+0.001 USDC in atomic units (6 decimals). Pick one, ignore the other.
 
 The 402 body is machine-readable: it tells any client exactly what to pay,
 to whom, on which network, in which asset.
 
 ## 3. Pay: sign the requirement, retry with X-PAYMENT
 
-The client signs an EIP-3009 `transferWithAuthorization` for the amount in
-`accepts[0]` and base64-encodes the signed payload into one header. Doing
-that by hand is miserable — use the 10-line client instead:
+**Base rail:** the client signs an EIP-3009 `transferWithAuthorization` for the
+amount in the `base-sepolia` entry and base64-encodes the signed payload into one
+header.
+
+**Solana rail:** the client builds an SPL `transferChecked` of `1000` USDC
+atomic units to the `solana` entry's `payTo`, signs the serialized transaction,
+and base64-encodes that envelope into the same header.
+
+Either way it is one header. Doing it by hand is miserable — use the client
+instead:
 
 ```bash
 PRIVATE_KEY=0x... npm run client        # runs examples/agent-client.ts
@@ -62,14 +86,18 @@ X-PAYMENT: eyJ4NDAyVmVyc2lvbiI6MSwic2NoZW1lIjoiZXhhY3QiLC...
 
 ```
 HTTP/1.1 200 OK
-X-PAYMENT-RESPONSE: eyJzdWNjZXNzIjp0cnVlLCJ0eEhhc2giOiIweGFiYy4uLiIsIm5ldHdvcmsiOiJiYXNlLXNlcG9saWEifQ==
+X-PAYMENT-RESPONSE: eyJzdWNjZXNzIjp0cnVlLCJ0cmFuc2FjdGlvbiI6IjB4YWJjLi4uIiwibmV0d29yayI6ImJhc2Utc2Vwb2xpYSJ9
 Content-Type: application/json
 
 { "restaurant": {...}, "slots": [ { "date": "...", "time": "19:00", ... } ] }
 ```
 
-`X-PAYMENT-RESPONSE` base64-decodes to the settlement result (success, tx
-hash, network) — your on-chain receipt.
+`X-PAYMENT-RESPONSE` base64-decodes to the settlement result — `{ success,
+transaction, network, payer }`. The `network` field tells you which rail
+actually settled. That is your on-chain receipt.
+
+Settlement runs *after* the handler succeeds: if the booking is rejected you get
+a `4xx` and no money moves.
 
 ## 5. Booking and cancelling
 

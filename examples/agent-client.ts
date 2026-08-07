@@ -10,6 +10,13 @@
  *   PRIVATE_KEY=0x... BASE_URL=http://localhost:4021 npx tsx examples/agent-client.ts
  *
  * The wallet needs base-sepolia USDC — faucet: https://faucet.circle.com
+ *
+ * ── Which rail? ────────────────────────────────────────────────────────────
+ * Every 402 from this server carries BOTH rails in `accepts`:
+ *   [0] network "base-sepolia" | "base"   USDC via EIP-3009 transferWithAuthorization
+ *   [1] network "solana" | "solana-devnet" USDC via SPL transferChecked
+ * `x402-fetch` (used below) picks the EVM entry automatically. The Solana
+ * alternative is at the bottom of this file.
  */
 import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
 import { privateKeyToAccount } from "viem/accounts";
@@ -76,3 +83,52 @@ const cancelRes = await fetch(`${BASE_URL}/cancel/${confirmation.reservationId}`
 const cancellation = await cancelRes.json();
 console.log("\n=== CANCELLATION + REFUND LEDGER ===");
 console.log(JSON.stringify(cancellation, null, 2));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Paying on the SOLANA rail instead
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `x402-fetch` signs the EVM entry. To settle in USDC on Solana, read the same
+// 402 body and act on the `solana` entry:
+//
+//   const res = await fetch(`${BASE_URL}/availability?party=2`);
+//   const { accepts } = await res.json();
+//   const sol = accepts.find((a) => a.network.startsWith("solana"));
+//   // sol = { scheme: "exact", network: "solana",
+//   //         asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",   // USDC mint
+//   //         payTo: "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW",
+//   //         maxAmountRequired: "1000",                               // 0.001 USDC, 6dp
+//   //         extra: { rpcUrl: "https://api.mainnet-beta.solana.com" } }
+//
+// Build an SPL `transferChecked` of `maxAmountRequired` units of `asset` to
+// `payTo`, sign it with your Solana keypair, then base64 the x402 envelope into
+// `X-PAYMENT` and retry. This server also mounts the checkout helper that does
+// the building for you (the same one the browser modal uses):
+//
+//   const prep = await fetch(`${BASE_URL}/api/x402-checkout?action=prepare`, {
+//     method: "POST",
+//     headers: { "content-type": "application/json" },
+//     body: JSON.stringify({ accept: sol, buyer: myPublicKey }),
+//   }).then((r) => r.json());
+//   const signedTxBase64 = await signWithYourWallet(prep.transaction);
+//   const { payment } = await fetch(`${BASE_URL}/api/x402-checkout?action=encode`, {
+//     method: "POST",
+//     headers: { "content-type": "application/json" },
+//     body: JSON.stringify({ accept: sol, signedTxBase64, resourceUrl: sol.resource }),
+//   }).then((r) => r.json());
+//   const paid = await fetch(`${BASE_URL}/availability?party=2`, {
+//     headers: { "X-PAYMENT": payment },
+//   });
+//
+// The 200 body and the `X-PAYMENT-RESPONSE` receipt are identical in shape on
+// both rails — only `network` and the transaction identifier differ.
+//
+// ── Raw dual-rail 402, for reference ────────────────────────────────────────
+//
+//   $ curl -s http://localhost:4021/availability | jq '.accepts[] | {network, payTo, asset}'
+//   { "network": "base-sepolia",
+//     "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402",
+//     "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e" }
+//   { "network": "solana",
+//     "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW",
+//     "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" }

@@ -2,6 +2,7 @@
 
 Base URL: your deployment (default `http://localhost:4021`). Machine-readable
 spec: [`openapi.json`](https://github.com/nirholas/x402-tablebook/blob/main/openapi.json).
+All prices are in USDC and payable on **either** rail — Base (EVM) or Solana.
 Paid routes return `402 Payment Required` until called with a valid
 `X-PAYMENT` header; successful paid responses carry an `X-PAYMENT-RESPONSE`
 settlement receipt header.
@@ -147,6 +148,9 @@ plus its full ledger. Errors: `403`, `404`.
 
 ## 402 response shape
 
+Paid routes answer an unpaid request with a `402` whose `accepts` array carries
+**both payment rails**. Pick one, sign it, retry with `X-PAYMENT`.
+
 ```json
 {
   "x402Version": 1,
@@ -158,10 +162,47 @@ plus its full ledger. Errors: `403`, `404`.
       "maxAmountRequired": "10000",
       "resource": "http://localhost:4021/book",
       "description": "Book a table with a refundable hold…",
-      "payTo": "0xMerchant…",
+      "mimeType": "application/json",
+      "payTo": "0x40252CFDF8B20Ed757D61ff157719F33Ec332402",
       "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      "maxTimeoutSeconds": 60
+      "maxTimeoutSeconds": 300,
+      "extra": { "name": "USDC", "version": "2" }
+    },
+    {
+      "scheme": "exact",
+      "network": "solana",
+      "maxAmountRequired": "10000",
+      "resource": "http://localhost:4021/book",
+      "description": "Book a table with a refundable hold…",
+      "mimeType": "application/json",
+      "payTo": "WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW",
+      "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "maxTimeoutSeconds": 300,
+      "extra": { "rpcUrl": "https://api.mainnet-beta.solana.com" }
     }
   ]
 }
 ```
+
+| Field | Meaning |
+|---|---|
+| `network` | `base-sepolia`/`base` = EVM rail; `solana`/`solana-devnet` = SVM rail |
+| `maxAmountRequired` | price in atomic USDC units (6 decimals) — `10000` = $0.01 |
+| `asset` | USDC contract address (EVM) or SPL mint (Solana) |
+| `payTo` | merchant receive address on that network |
+| `extra` | EVM: the EIP-712 domain to sign against. Solana: the RPC to build against. |
+
+Configure the rails with `NETWORK` / `PAY_TO_ADDRESS` (EVM) and
+`SOLANA_NETWORK` / `SOLANA_PAY_TO_ADDRESS` / `SOLANA_RPC_URL` (Solana). Drop an
+address and that rail is omitted from every challenge.
+
+## Settlement receipt
+
+A successful paid call returns `X-PAYMENT-RESPONSE`: base64 JSON of
+`{ success, transaction, network, payer }`. `network` tells you which rail
+settled. Settlement is deferred until the handler returns `2xx` — an error
+response (e.g. `409 NO_TABLE`) never moves funds.
+
+## Contact
+
+**nichxbt@gmail.com** · [issues](https://github.com/nirholas/x402-tablebook/issues)

@@ -4,6 +4,11 @@ Model Context Protocol (MCP) lets Claude call this reservation server as a
 native tool. The pattern: an MCP server wraps the paid endpoints with
 `x402-fetch`, so every tool call pays automatically from the agent's wallet.
 
+The server quotes both rails in every 402 (USDC on Base and USDC on Solana);
+`x402-fetch` settles the Base entry. To have the MCP server pay on Solana
+instead, swap the wrapper for your own Solana signer — see
+[`agent-client.ts`](agent-client.ts) for the exact envelope.
+
 ## Minimal MCP server (`mcp-server.ts`)
 
 ```ts
@@ -64,6 +69,8 @@ await server.connect(new StdioServerTransport());
 ```
 
 Dependencies: `npm i @modelcontextprotocol/sdk x402-fetch viem zod`
+
+Questions: **nichxbt@gmail.com**
 
 ## claude_desktop_config.json
 

@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chez x402 — Reserve a table</title>
-<script type="module" src="https://unpkg.com/@three-ws/x402-payment-modal"></script>
+<script>
+  // Drop-in checkout modal (proprietary npm package, loaded from CDN — never vendored).
+  // `checkout-origin` points the Solana rail at THIS server's /api/x402-checkout,
+  // which builds the SPL transfer Phantom signs. The Base rail needs no server.
+  const x402Modal = document.createElement("script");
+  x402Modal.type = "module";
+  x402Modal.src = "https://unpkg.com/@three-ws/x402-payment-modal";
+  x402Modal.dataset.x402CheckoutOrigin = location.origin;
+  x402Modal.dataset.x402BrandName = "Chez x402";
+  x402Modal.dataset.x402FooterNote = "x402 \u00b7 USDC on Base or Solana";
+  document.head.appendChild(x402Modal);
+</script>
 <style>
   :root {
     --accent: #0052ff;
@@ -69,9 +80,9 @@
 <body>
 <div class="wrap">
   <header>
-    <span class="badge">x402 demo — USDC on Base Sepolia</span>
+    <span class="badge">x402 demo — pay in USDC on Base <em>or</em> Solana</span>
     <h1>Chez x402</h1>
-    <p class="tag">Book a real table on this server with a $0.01 refundable hold — no account, no phone call. Agents use the <a href="/.well-known/x402">x402 manifest</a>; humans use this page.</p>
+    <p class="tag">Book a real table on this server with a $0.01 refundable hold — no account, no sign-up, no phone call. Connect Phantom (Solana) or MetaMask (Base); the modal reads the 402 and picks the rail. Agents use the <a href="/.well-known/x402">x402 manifest</a>; humans use this page.</p>
   </header>
 
   <section>
@@ -90,7 +101,7 @@
         data-x402-merchant="Chez x402" data-x402-action="Search availability">
         Pay &amp; search availability
       </button>
-      <div class="price">$0.001 USDC · settles in seconds via x402</div>
+      <div class="price">$0.001 USDC on Base or Solana · settles in seconds via x402</div>
       <div id="slots" class="slots"></div>
       <div id="slotHint" class="hint hidden">Tap a slot, then book below.</div>
     </div>
@@ -126,7 +137,7 @@
   </section>
 
   <footer class="hint" style="margin-top:40px">
-    Powered by <a href="https://x402.org">x402</a> — payment UI by
+    Powered by <a href="https://x402.org">x402</a> — dual-rail USDC (Base + Solana). Payment UI by
     <code>@three-ws/x402-payment-modal</code> (SIWX wallet re-entry, per-site spending caps).
     Source: <a href="https://github.com/nirholas/x402-tablebook">github.com/nirholas/x402-tablebook</a>
   </footer>
@@ -135,6 +146,7 @@
 <script>
   let chosen = null;
   let confirmation = null;
+  let lastPayment = null; // { network, transaction, payer } from the settled payment
 
   const $ = (id) => document.getElementById(id);
 
@@ -160,19 +172,20 @@
   }
   $("name").addEventListener("input", syncBookBody);
 
+  // `x402:result` bubbles from the clicked button with detail = PayResult:
+  // { ok, result, payment: { network, transaction, payer }, response }.
   addEventListener("x402:result", (e) => {
-    const { endpoint, data } = normalize(e.detail ?? e);
-    if (!data) return;
-    if (endpoint && endpoint.startsWith("/availability")) renderSlots(data);
-    else if (endpoint === "/book" || data.reservationId) renderConfirmation(data);
+    const artifact = e.detail?.result ?? e.detail;
+    if (!artifact) return;
+    lastPayment = e.detail?.payment ?? null;
+    if (Array.isArray(artifact.slots)) renderSlots(artifact);
+    else if (artifact.reservationId) renderConfirmation(artifact);
   });
 
-  function normalize(d) {
-    // tolerate {endpoint,data} | {response} | raw artifact shapes
-    if (d && d.data) return { endpoint: d.endpoint ?? d.url ?? "", data: d.data };
-    if (d && d.response) return { endpoint: d.endpoint ?? "", data: d.response };
-    return { endpoint: d && d.slots ? "/availability" : "/book", data: d };
-  }
+  addEventListener("x402:error", (e) => {
+    if (e.detail?.error?.code === "cancelled") return;
+    console.error("x402 payment failed:", e.detail?.error);
+  });
 
   function renderSlots(avail) {
     const box = $("slots");
@@ -202,6 +215,12 @@
       `Table <strong>${c.table?.name ?? c.table?.id ?? "?"}</strong> for ` +
       `<strong>${c.party}</strong> · <strong>${c.confirmedTime}</strong> · ${c.restaurant}` +
       `<div class="hint">Hold: ${c.refundTerms?.holdPrice ?? "$0.01"} — ${c.refundTerms?.description ?? ""}</div>`;
+    if (lastPayment) {
+      $("confSummary").innerHTML +=
+        `<div class="hint">Paid on <strong>${lastPayment.network}</strong>` +
+        (lastPayment.transaction ? ` · tx <code>${String(lastPayment.transaction).slice(0, 18)}…</code>` : "") +
+        `</div>`;
+    }
     $("artifact").textContent = JSON.stringify({ ...c, ics: (c.ics ?? "").slice(0, 48) + "…" }, null, 2);
     $("result").scrollIntoView({ behavior: "smooth" });
   }
