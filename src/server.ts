@@ -11,6 +11,7 @@ import {
   railSummary,
   type RouteMap,
 } from "./payments.js";
+import { ROUTE_SCHEMAS } from "./schemas.js";
 import { BookingError, book, cancel, config, getAvailability, getReservation } from "./service.js";
 
 const PORT = Number(process.env.PORT || 4021);
@@ -26,43 +27,14 @@ const routes: RouteMap = {
     price: PRICES.availability,
     description:
       "Open reservation slots (date, time, seatable party sizes, table types) for the booking window",
-    outputSchema: {
-      type: "object",
-      properties: {
-        restaurant: { type: "string" },
-        slots: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              date: { type: "string" },
-              time: { type: "string" },
-              partySizes: { type: "array", items: { type: "integer" } },
-              tableTypes: { type: "array", items: { type: "string" } },
-              openTables: { type: "integer" },
-            },
-          },
-        },
-      },
-    },
+    // Request/response schemas mirror openapi.json — see src/schemas.ts.
+    ...ROUTE_SCHEMAS["GET /availability"],
   },
   "POST /book": {
     price: PRICES.book,
     description:
       "Book a table with a refundable hold. Returns reservationId, confirmed time, table, refund terms, cancel token, and a base64 ICS calendar invite",
-    outputSchema: {
-      type: "object",
-      properties: {
-        reservationId: { type: "string" },
-        confirmedTime: { type: "string" },
-        party: { type: "integer" },
-        table: { type: "object" },
-        refundTerms: { type: "object" },
-        cancelToken: { type: "string" },
-        ics: { type: "string", description: "base64-encoded RFC 5545 calendar invite" },
-        signature: { type: "string" },
-      },
-    },
+    ...ROUTE_SCHEMAS["POST /book"],
   },
 };
 
