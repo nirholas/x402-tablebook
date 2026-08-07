@@ -1,0 +1,36 @@
+{
+  "restaurant": {
+    "name": "Chez x402",
+    "description": "Demo restaurant — edit config/tables.json to describe your real floor.",
+    "timezone": "America/New_York",
+    "address": "402 Payment Ave, New York, NY 10001",
+    "phone": "+1 (555) 402-0402"
+  },
+  "hours": {
+    "monday": null,
+    "tuesday": { "open": "17:00", "close": "22:00" },
+    "wednesday": { "open": "17:00", "close": "22:00" },
+    "thursday": { "open": "17:00", "close": "22:00" },
+    "friday": { "open": "17:00", "close": "23:00" },
+    "saturday": { "open": "12:00", "close": "23:00" },
+    "sunday": { "open": "12:00", "close": "21:00" }
+  },
+  "slotMinutes": 30,
+  "seatingMinutes": 90,
+  "bookingWindowDays": 14,
+  "tables": [
+    { "id": "T1", "name": "Window 1", "seats": 2, "type": "window" },
+    { "id": "T2", "name": "Window 2", "seats": 2, "type": "window" },
+    { "id": "T3", "name": "Main 1", "seats": 4, "type": "standard" },
+    { "id": "T4", "name": "Main 2", "seats": 4, "type": "standard" },
+    { "id": "T5", "name": "Main 3", "seats": 4, "type": "standard" },
+    { "id": "T6", "name": "Round 1", "seats": 6, "type": "round" },
+    { "id": "T7", "name": "Patio 1", "seats": 4, "type": "patio" },
+    { "id": "T8", "name": "Chef's Counter", "seats": 8, "type": "counter" }
+  ],
+  "refundPolicy": {
+    "holdPrice": "$0.01",
+    "freeCancellationHours": 2,
+    "description": "The $0.01 x402 hold is fully refundable when you cancel at least 2 hours before your reservation. Later cancellations forfeit the hold."
+  }
+}

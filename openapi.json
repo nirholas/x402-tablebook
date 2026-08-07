@@ -1,0 +1,299 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "x402-tablebook",
+    "version": "0.1.0",
+    "description": "Open-source Resy: a self-hosted restaurant reservation server that AI agents can book via x402 refundable holds. Paid routes respond 402 with PaymentRequirements until an X-PAYMENT header carrying a signed USDC payment is supplied.",
+    "license": { "name": "Apache-2.0", "identifier": "Apache-2.0" }
+  },
+  "servers": [{ "url": "http://localhost:4021" }],
+  "paths": {
+    "/availability": {
+      "get": {
+        "operationId": "getAvailability",
+        "summary": "Open reservation slots ($0.001 via x402)",
+        "parameters": [
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "party", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "days", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "$ref": "#/components/parameters/XPayment" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Availability artifact",
+            "headers": { "X-PAYMENT-RESPONSE": { "$ref": "#/components/headers/XPaymentResponse" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Availability" } }
+            }
+          },
+          "402": { "$ref": "#/components/responses/PaymentRequired" }
+        }
+      }
+    },
+    "/book": {
+      "post": {
+        "operationId": "bookTable",
+        "summary": "Book a table with a refundable hold ($0.01 via x402)",
+        "parameters": [{ "$ref": "#/components/parameters/XPayment" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/BookRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation confirmation artifact (includes cancelToken and base64 ICS)",
+            "headers": { "X-PAYMENT-RESPONSE": { "$ref": "#/components/headers/XPaymentResponse" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Confirmation" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/cancel/{id}": {
+      "post": {
+        "operationId": "cancelReservation",
+        "summary": "Cancel a reservation (free, auth by cancelToken)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["cancelToken"],
+                "properties": { "cancelToken": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancellation record + refund ledger entry",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Cancellation" } }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/reservations/{id}": {
+      "get": {
+        "operationId": "getReservation",
+        "summary": "Look up a reservation (free, auth by cancelToken)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "cancelToken", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Reservation + ledger", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "operationId": "getInfo",
+        "summary": "Restaurant profile, hours, refund policy, prices (free)",
+        "responses": {
+          "200": { "description": "Info", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Liveness (free)",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    },
+    "/.well-known/x402": {
+      "get": {
+        "operationId": "getX402Manifest",
+        "summary": "x402 discovery manifest (free)",
+        "responses": {
+          "200": { "description": "Manifest", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "XPayment": {
+        "name": "X-PAYMENT",
+        "in": "header",
+        "required": false,
+        "description": "Base64-encoded signed x402 payment payload. Omit to receive a 402 with PaymentRequirements.",
+        "schema": { "type": "string" }
+      }
+    },
+    "headers": {
+      "XPaymentResponse": {
+        "description": "Base64-encoded settlement receipt (transaction hash, network, payer)",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "PaymentRequired": {
+        "description": "Payment required — respond by signing one of accepts[] and retrying with X-PAYMENT",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/PaymentRequirements" } }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid input",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Auth failed (bad cancelToken)",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Unknown reservation",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "Slot unavailable / outside hours / already cancelled",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "PaymentRequirements": {
+        "type": "object",
+        "description": "x402 payment requirements returned with HTTP 402",
+        "properties": {
+          "x402Version": { "type": "integer" },
+          "error": { "type": "string" },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scheme": { "type": "string", "example": "exact" },
+                "network": { "type": "string", "example": "base-sepolia" },
+                "maxAmountRequired": { "type": "string", "description": "atomic USDC units" },
+                "resource": { "type": "string" },
+                "description": { "type": "string" },
+                "mimeType": { "type": "string" },
+                "payTo": { "type": "string" },
+                "maxTimeoutSeconds": { "type": "integer" },
+                "asset": { "type": "string", "description": "USDC contract address" }
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" }, "message": { "type": "string" } }
+      },
+      "Availability": {
+        "type": "object",
+        "properties": {
+          "restaurant": { "type": "object" },
+          "slotMinutes": { "type": "integer" },
+          "seatingMinutes": { "type": "integer" },
+          "refundPolicy": { "$ref": "#/components/schemas/RefundPolicy" },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": { "type": "string", "format": "date" },
+                "time": { "type": "string" },
+                "partySizes": { "type": "array", "items": { "type": "integer" } },
+                "tableTypes": { "type": "array", "items": { "type": "string" } },
+                "openTables": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
+      "RefundPolicy": {
+        "type": "object",
+        "properties": {
+          "holdPrice": { "type": "string" },
+          "freeCancellationHours": { "type": "number" },
+          "description": { "type": "string" }
+        }
+      },
+      "BookRequest": {
+        "type": "object",
+        "required": ["date", "time", "party", "name"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "time": { "type": "string", "example": "19:00" },
+          "party": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string" },
+          "notes": { "type": "string" },
+          "payerWallet": { "type": "string" }
+        }
+      },
+      "Confirmation": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string" },
+          "status": { "type": "string", "enum": ["confirmed"] },
+          "restaurant": { "type": "string" },
+          "confirmedTime": { "type": "string" },
+          "party": { "type": "integer" },
+          "name": { "type": "string" },
+          "table": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "seats": { "type": "integer" }
+            }
+          },
+          "refundTerms": { "$ref": "#/components/schemas/RefundPolicy" },
+          "cancelToken": { "type": "string" },
+          "cancelEndpoint": { "type": "string" },
+          "ledgerEntry": { "$ref": "#/components/schemas/LedgerEntry" },
+          "ics": { "type": "string", "description": "base64 RFC 5545 calendar invite" },
+          "signature": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "LedgerEntry": {
+        "type": "object",
+        "properties": {
+          "entryId": { "type": "string" },
+          "reservationId": { "type": "string" },
+          "kind": { "type": "string", "enum": ["hold", "refund", "forfeit"] },
+          "amount": { "type": "string" },
+          "wallet": { "type": "string" },
+          "reason": { "type": "string" },
+          "at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Cancellation": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string" },
+          "status": { "type": "string", "enum": ["cancelled"] },
+          "cancelledAt": { "type": "string", "format": "date-time" },
+          "refunded": { "type": "boolean" },
+          "refundLedgerEntry": { "$ref": "#/components/schemas/LedgerEntry" },
+          "ledger": { "type": "array", "items": { "$ref": "#/components/schemas/LedgerEntry" } },
+          "signature": { "type": "string" }
+        }
+      }
+    }
+  }
+}
