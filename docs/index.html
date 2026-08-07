@@ -42,6 +42,12 @@
   .step b { display: block; color: var(--accent); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
   .step p { font-size: .87rem; color: var(--muted); }
   .arrow { align-self: center; padding: 0 8px; color: var(--muted); font-size: 1.3rem; }
+  .rails { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 8px; }
+  .rail { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .rail h3 { font-size: .95rem; margin-bottom: 8px; }
+  .rail dl { font-size: .84rem; color: var(--muted); }
+  .rail dt { font-weight: 600; color: var(--fg); margin-top: 8px; }
+  .rail dd { margin: 0; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
   .tile h3 { font-size: 1rem; margin-bottom: 6px; }
@@ -90,9 +96,33 @@ npm run dev   # runs out of the box, both rails live</div>
   <div class="flow">
     <div class="step"><b>1 · Request</b><p><code>POST /book</code> with no payment. Server replies <strong>402</strong> with an <code>accepts[]</code> holding <em>both</em> rails — amount, token address and recipient on Base <em>and</em> on Solana.</p></div>
     <div class="arrow">→</div>
-    <div class="step"><b>2 · Pay (your pick)</b><p>Base: sign an EIP-3009 USDC authorization. Solana: sign an SPL <code>transferChecked</code>. Retry with the <code>X-PAYMENT</code> header; the facilitator verifies and settles on whichever chain you chose.</p></div>
+    <div class="step"><b>2 · Pay (your pick)</b><p>Base: sign an EIP-3009 USDC authorization. Solana: sign an SPL <code>transferChecked</code>. Retry with the <code>X-PAYMENT</code> header; that rail's facilitator verifies and settles on the chain you chose.</p></div>
     <div class="arrow">→</div>
     <div class="step"><b>3 · Artifact</b><p><strong>200</strong> with the reservation in the body and a settlement receipt in <code>X-PAYMENT-RESPONSE</code>, naming the rail. Settlement only runs on success — a rejected booking never charges you.</p></div>
+  </div>
+
+  <h2>Two rails, one price</h2>
+  <div class="rails">
+    <div class="rail">
+      <h3>USDC on Base (EVM)</h3>
+      <dl>
+        <dt>network</dt><dd>base-sepolia (default) · base</dd>
+        <dt>asset</dt><dd>0x036CbD53842c5426634e7929541eC2318f3dCF7e</dd>
+        <dt>payTo</dt><dd>0x40252CFDF8B20Ed757D61ff157719F33Ec332402</dd>
+        <dt>signature</dt><dd>EIP-3009 transferWithAuthorization</dd>
+        <dt>facilitator</dt><dd>https://x402.org/facilitator</dd>
+      </dl>
+    </div>
+    <div class="rail">
+      <h3>USDC on Solana (SVM)</h3>
+      <dl>
+        <dt>network</dt><dd>solana (default) · solana-devnet</dd>
+        <dt>asset</dt><dd>EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</dd>
+        <dt>payTo</dt><dd>WwwuGbqHrwF5RG89KhUbmRWEvjnRH9k5kVM5p7T3WwW</dd>
+        <dt>signature</dt><dd>SPL transferChecked (serialized tx)</dd>
+        <dt>facilitator</dt><dd>https://facilitator.payai.network</dd>
+      </dl>
+    </div>
   </div>
 
   <h2>Quickstart — agent side</h2>
