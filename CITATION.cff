@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+title: "x402-tablebook"
+abstract: "Open-source Resy: a self-hosted restaurant reservation server that AI agents can book via x402 refundable holds"
+license: Apache-2.0
+repository-code: "https://github.com/nirholas/x402-tablebook"
+url: "https://three.ws"
+authors:
+  - name: three.ws
+    website: "https://three.ws"
