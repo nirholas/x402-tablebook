@@ -1,0 +1,22 @@
+{
+  "name": "x402-tablebook",
+  "owner": {
+    "name": "nirholas"
+  },
+  "description": "Self-hosted restaurant reservation server that agents book through x402 refundable holds.",
+  "plugins": [
+    {
+      "name": "x402-tablebook",
+      "source": "./plugins/x402-tablebook",
+      "description": "Self-hosted restaurant reservation server that agents book through x402 refundable holds.",
+      "category": "automation",
+      "tags": [
+        "x402",
+        "reservations",
+        "restaurant",
+        "booking",
+        "agents"
+      ]
+    }
+  ]
+}
