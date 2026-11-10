@@ -1,0 +1,18 @@
+{
+  "name": "x402-tablebook",
+  "version": "0.1.0",
+  "description": "Self-hosted restaurant reservation server that agents book through x402 refundable holds.",
+  "author": {
+    "name": "nirholas"
+  },
+  "repository": "https://github.com/nirholas/x402-tablebook",
+  "homepage": "https://nirholas.github.io/x402-tablebook/",
+  "license": "Apache-2.0",
+  "keywords": [
+    "x402",
+    "reservations",
+    "restaurant",
+    "booking",
+    "agents"
+  ]
+}
